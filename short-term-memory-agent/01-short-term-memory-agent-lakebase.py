@@ -587,6 +587,45 @@ response.predictions
 
 # COMMAND ----------
 
+# DBTITLE 1,Invoke Deployed Model Endpoint for User Query Prediction
+from mlflow.deployments import get_deploy_client
+
+catalog = dbutils.widgets.get("catalog")
+schema = dbutils.widgets.get("schema")
+model_name = "short-term-memory-agent"
+endpoint_name: str = f"agents_{catalog}-{schema}-{model_name}"
+res = get_deploy_client("databricks").predict(
+    endpoint=endpoint_name,
+    inputs={
+        "input": [
+            {
+                "role": "user",
+                "content": "What am I working on?",
+            }
+        ],
+        "max_tokens": 400,
+        "custom_inputs": {"thread_id": "e396d36f-b237-484f-ad6e-f000551703f5"},
+        "temperature": 0.1,
+    },
+)
+
+# COMMAND ----------
+
+# DBTITLE 1,Retrieve and Display Serving Endpoint Task Details
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+ep = w.serving_endpoints.get(endpoint_name)
+print(ep.task)
+
+# COMMAND ----------
+
+# DBTITLE 1,Print First Element of Output if Key Exists in Result
+if "output" in res:
+    print(res["output"][0]["content"][-1]["text"])
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # Next steps
 # MAGIC It will take around 15 minutes for you to finish deploying your agent. After your agent is deployed, you can chat with it in Review App/playground to perform additional checks, share it with SMEs in your organization for feedback, or embed it in a production application. 
