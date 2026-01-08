@@ -45,7 +45,7 @@ def _query_endpoint(
         },
     )
     if "output" in res:
-        return res["output"][0]["content"]
+        return res["output"][-1]["content"]
     raise Exception(
         "This app can only run against:"
         "1) Databricks foundation model or external model endpoints with the chat task type (described in https://docs.databricks.com/aws/en/machine-learning/model-serving/score-foundation-models#chat-completion-model-query)"
