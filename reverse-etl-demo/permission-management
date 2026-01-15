@@ -1,0 +1,48 @@
+-- ======== CONFIG ========
+\set db      rev_etl             
+\set schema  support              
+\set sp      8c56a9d0-4ac1-4de0-a094-aba82e3ada0d  
+
+-- Build a double-quoted identifier for GRANT (identifiers need double-quotes)
+\set spq '"' :sp '"'
+
+-- ======== 0) Create (or fetch) the Postgres role for this Service Principal ========
+-- Function takes TEXT args, so substitute as a *string literal* with :'<var>'
+SELECT databricks_create_role(:'sp', 'SERVICE_PRINCIPAL');
+
+-- ======== 1) Database & schema access ========
+GRANT CONNECT ON DATABASE :db TO :spq;
+GRANT USAGE  ON SCHEMA   :schema TO :spq;
+
+-- ======== 2) EXISTING OBJECTS: Read/Write access (tables + sequences) ========
+-- If you want READ-ONLY instead, skip this block and use the RO block below.
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON ALL TABLES IN SCHEMA :schema
+  TO :spq;
+
+GRANT USAGE, SELECT
+  ON ALL SEQUENCES IN SCHEMA :schema
+  TO :spq;
+
+-- ======== 3) FUTURE OBJECTS: Default privileges (tables + sequences) ========
+-- IMPORTANT: Run these as the *role that will own future objects* (typically the schema/table owner).
+-- Default privileges apply to objects created *by the current session role* in this schema.
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA :schema
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :spq;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA :schema
+GRANT USAGE, SELECT ON SEQUENCES TO :spq;
+
+-- ======== 4) QUICK VERIFICATION ========
+\echo
+\echo '--- Roles ---'
+\du :spq
+
+\echo
+\echo '--- Default privileges (by current role) ---'
+SELECT n.nspname AS schema_name, d.defaclobjtype AS obj_type, d.defaclacl AS acl
+FROM pg_default_acl d
+JOIN pg_namespace n ON n.oid = d.defaclnamespace
+WHERE n.nspname = :'schema';
