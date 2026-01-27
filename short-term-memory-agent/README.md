@@ -81,6 +81,7 @@ Run `01-lakebase-instance-setup.ipynb` to:
 Run `02-lakebase-langgraph-checkpointer-agent.ipynb` to:
 - Build the stateful LangGraph agent
 - Configure databricks-langchain checkpointer
+- `databricks-langchain[memory]` only provisioned lakebase is supported for now - lakebase team expects autoscaling support to land in the Feb timeline
 - Test agent locally with conversation threads
 - Register model to Unity Catalog
 - Deploy to Databricks Model Serving
