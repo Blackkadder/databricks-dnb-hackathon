@@ -1,0 +1,24 @@
+resources:
+  jobs:
+    bo_shutdown_job:
+      name: bo_shutdown_job
+      tasks:
+        - task_key: bo_shutdown_app
+          notebook_task:
+            notebook_path: ../Hackathon-Admins-Stop-App.ipynb
+          # environment_key: env1
+        - task_key: bo_shutdown_lakebase_provisioned
+          depends_on: 
+            - task_key: bo_shutdown_app
+          notebook_task:
+            notebook_path: ../Hackathon-Admins-Stop-Lakebase-Provisioned.ipynb
+          # environment_key: env1
+      schedule:
+        quartz_cron_expression: "0 0 18 * * ?"
+        timezone_id: "America/Los_Angeles"
+        pause_status: "UNPAUSED"
+      # environments:
+      #   - environment_key: env1
+      #     spec:
+      #       environment_version: "4"
+      # performance_target: PERFORMANCE_OPTIMIZED
