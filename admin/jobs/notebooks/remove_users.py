@@ -1,9 +1,11 @@
 # Databricks notebook source
-"""Delete non-admin account users, with dry-run behavior by default."""
+"""Delete non-admin account users and their workspace folders, dry-running by default."""
 
 # COMMAND ----------
 
-from databricks.sdk import AccountClient
+from databricks.sdk import AccountClient, WorkspaceClient
+from databricks.sdk.errors import BadRequest
+from databricks.sdk.service.workspace import ObjectType
 
 # COMMAND ----------
 
@@ -61,21 +63,54 @@ client = AccountClient(
     client_id=client_id,
     client_secret=client_secret,
 )
+workspace_client = WorkspaceClient(
+    client_id=client_id,
+    client_secret=client_secret,
+)
 users = list(client.users.list())
 candidates = [user for user in users if not is_account_admin(user)]
+admin_folder_paths = {
+    f"/users/{user.user_name}".casefold()
+    for user in users
+    if is_account_admin(user) and user.user_name
+}
+workspace_folders = [
+    item.path
+    for item in workspace_client.workspace.list("/Users")
+    if item.object_type == ObjectType.DIRECTORY
+    and item.path
+    and item.path.casefold() not in admin_folder_paths
+]
 
 mode = "LIVE DELETE" if run_live else "DRY RUN"
 print(f"Mode: {mode}")
 print(f"Non-admin users found: {len(candidates)}")
+print(f"Non-admin or orphaned workspace folders found: {len(workspace_folders)}")
+
+for workspace_folder in workspace_folders:
+    print(
+        f"Workspace folder: {workspace_folder} "
+        f"({'delete' if run_live else 'would delete'})"
+    )
+    if run_live:
+        try:
+            workspace_client.workspace.delete(workspace_folder, recursive=True)
+        except BadRequest as error:
+            if "is protected" not in str(error):
+                raise
+            print(f"Workspace folder: {workspace_folder} (skipped: protected)")
 
 for user in candidates:
-    print(user.user_name)
+    if not user.user_name:
+        raise ValueError(f"Cannot process user without a user name: {user.id!r}")
+
+    print(f"User: {user.user_name}")
     if run_live:
         if not user.id:
             raise ValueError(f"Cannot delete user without an ID: {user.user_name!r}")
         client.users.delete(user.id)
 
 if run_live:
-    print(f"Deleted {len(candidates)} non-admin users.")
+    print(f"Deleted {len(candidates)} non-admin users and their workspace folders.")
 else:
-    print("Dry run complete. No users were deleted.")
+    print("Dry run complete. No users or workspace folders were deleted.")
