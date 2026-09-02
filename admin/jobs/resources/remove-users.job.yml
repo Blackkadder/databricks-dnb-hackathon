@@ -1,0 +1,18 @@
+resources:
+  jobs:
+    remove_non_admin_users:
+      name: remove-non-admin-account-users
+      parameters:
+        - name: run_live
+          default: "false"
+      tasks:
+        - task_key: remove_non_admin_users
+          notebook_task:
+            notebook_path: ../notebooks/remove_users.py
+            base_parameters:
+              account_host: ${var.account_host}
+              secret_scope: ${var.secret_scope}
+              account_id_secret_key: ${var.account_id_secret_key}
+              admin_sp_username_secret_key: ${var.admin_sp_username_secret_key}
+              admin_sp_client_secret_key: ${var.admin_sp_client_secret_key}
+              run_live: "{{job.parameters.run_live}}"
