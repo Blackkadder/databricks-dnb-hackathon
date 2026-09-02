@@ -1,0 +1,21 @@
+resources:
+  jobs:
+    add_hackathon_users:
+      name: add-hackathon-account-users
+      parameters:
+        - name: csv_path
+          default: /Volumes/admin/workshop_provisioning/user_provisioning/users.csv
+        - name: run_live
+          default: "false"
+      tasks:
+        - task_key: add_hackathon_users
+          notebook_task:
+            notebook_path: ../notebooks/add_users.py
+            base_parameters:
+              account_host: ${var.account_host}
+              secret_scope: ${var.secret_scope}
+              account_id_secret_key: ${var.account_id_secret_key}
+              admin_sp_username_secret_key: ${var.admin_sp_username_secret_key}
+              admin_sp_client_secret_key: ${var.admin_sp_client_secret_key}
+              csv_path: "{{job.parameters.csv_path}}"
+              run_live: "{{job.parameters.run_live}}"
