@@ -1,0 +1,34 @@
+bundle:
+  name: hackathon-account-identity-cleanup
+
+include:
+  - resources/*.yml
+
+variables:
+  account_host:
+    description: Databricks account console host
+    default: https://accounts.cloud.databricks.com
+  secret_scope:
+    description: Secret scope containing the Databricks account ID
+    default: hackathon-admin
+  account_id_secret_key:
+    description: Secret key containing the Databricks account ID
+    default: account-id
+  admin_sp_username_secret_key:
+    description: Secret key containing the account-admin service principal client ID
+    default: admin-sp-username
+  admin_sp_client_secret_key:
+    description: Secret key containing the account-admin service principal client secret
+    default: admin-sp-client-secret
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-7f5ee9e8-6a84.cloud.databricks.com/
+
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-7f5ee9e8-6a84.cloud.databricks.com/
