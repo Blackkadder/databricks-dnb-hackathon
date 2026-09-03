@@ -5,6 +5,10 @@ resources:
       parameters:
         - name: csv_path
           default: /Volumes/admin/workshop_provisioning/user_provisioning/users.csv
+        - name: catalog
+          default: lakebase_hackathon
+        - name: schema_owner_group
+          default: workshop_admins
         - name: run_live
           default: "false"
       tasks:
@@ -17,5 +21,15 @@ resources:
               account_id_secret_key: ${var.account_id_secret_key}
               admin_sp_username_secret_key: ${var.admin_sp_username_secret_key}
               admin_sp_client_secret_key: ${var.admin_sp_client_secret_key}
+              csv_path: "{{job.parameters.csv_path}}"
+              run_live: "{{job.parameters.run_live}}"
+        - task_key: create_company_schemas
+          depends_on:
+            - task_key: add_hackathon_users
+          notebook_task:
+            notebook_path: ../notebooks/create_company_schemas.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema_owner_group: "{{job.parameters.schema_owner_group}}"
               csv_path: "{{job.parameters.csv_path}}"
               run_live: "{{job.parameters.run_live}}"
