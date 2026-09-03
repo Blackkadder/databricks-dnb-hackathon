@@ -87,6 +87,18 @@ print(f"Mode: {mode}")
 print(f"Non-admin users found: {len(candidates)}")
 print(f"Non-admin or orphaned workspace folders found: {len(workspace_folders)}")
 
+# Remove users first so that their workspace folders are no longer blocked by
+# an active user when we delete the folders below.
+for user in candidates:
+    if not user.user_name:
+        raise ValueError(f"Cannot process user without a user name: {user.id!r}")
+
+    print(f"User: {user.user_name}")
+    if run_live:
+        if not user.id:
+            raise ValueError(f"Cannot delete user without an ID: {user.user_name!r}")
+        client.users.delete(user.id)
+
 for workspace_folder in workspace_folders:
     print(
         f"Workspace folder: {workspace_folder} "
@@ -99,16 +111,6 @@ for workspace_folder in workspace_folders:
             if "is protected" not in str(error):
                 raise
             print(f"Workspace folder: {workspace_folder} (skipped: protected)")
-
-for user in candidates:
-    if not user.user_name:
-        raise ValueError(f"Cannot process user without a user name: {user.id!r}")
-
-    print(f"User: {user.user_name}")
-    if run_live:
-        if not user.id:
-            raise ValueError(f"Cannot delete user without an ID: {user.user_name!r}")
-        client.users.delete(user.id)
 
 if run_live:
     print(f"Deleted {len(candidates)} non-admin users and their workspace folders.")
