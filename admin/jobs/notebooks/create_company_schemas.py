@@ -10,7 +10,7 @@ from pathlib import Path
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "lakebase_hackathon")
+dbutils.widgets.text("catalog", "databricks-hackathon")
 dbutils.widgets.text(
     "csv_path", "/Volumes/admin/workshop_provisioning/user_provisioning/users.csv"
 )
@@ -29,6 +29,7 @@ if not all([catalog, csv_path, schema_owner_group]):
 
 EXPECTED_HEADERS = {"email_address", "company"}
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+ACCOUNT_USERS_GROUP = "account users"
 
 
 def load_companies(path: str) -> dict[str, str]:
@@ -101,6 +102,28 @@ print(f"Distinct companies: {len(schema_by_company)}")
 
 catalog_ident = quote_identifier(catalog)
 owner_ident = quote_identifier(schema_owner_group)
+account_users_ident = quote_identifier(ACCOUNT_USERS_GROUP)
+
+# Every account user inherits privileges granted to `account users`. Keep that
+# principal at USE CATALOG only so company users can traverse this catalog but
+# cannot discover or access every schema through an inherited catalog-level
+# grant. The run-as identity must own the catalog or have MANAGE on it.
+catalog_isolation_statements = [
+    f"REVOKE ALL PRIVILEGES ON CATALOG {catalog_ident} FROM {account_users_ident}",
+    (
+        "REVOKE BROWSE, MANAGE, READ METADATA ON CATALOG "
+        f"{catalog_ident} FROM {account_users_ident}"
+    ),
+    f"GRANT USE CATALOG ON CATALOG {catalog_ident} TO {account_users_ident}",
+]
+
+print(f"\nRestricting {ACCOUNT_USERS_GROUP!r} to catalog traversal only")
+for statement in catalog_isolation_statements:
+    if run_live:
+        print(f"  run: {statement}")
+        spark.sql(statement)
+    else:
+        print(f"  would run: {statement}")
 
 for company, schema in schema_by_company.items():
     schema_ident = f"{catalog_ident}.{quote_identifier(schema)}"
@@ -108,18 +131,22 @@ for company, schema in schema_by_company.items():
     # display name, so it is the grant principal here.
     group_ident = quote_identifier(company)
 
-    # The run-as identity owns each schema it creates, so it can grant on the
-    # schema without holding MANAGE on the catalog. Catalog traversal
-    # (USE CATALOG) is provided by the account-wide `account users` grant that
-    # already exists on the catalog, so no catalog-level grant is issued here
-    # (that would require MANAGE on the catalog, which the run-as may not have).
-    # Ownership is then transferred to a stable admin group so schemas are not
-    # tied to the individual that ran the job; the run-as identity must belong
-    # to that group to transfer ownership. Re-runs stay idempotent because a
-    # member of the owning group retains the rights to re-grant and re-set it.
+    # Remove any direct catalog-level grants from a reused company group, then
+    # restore only USE CATALOG. Without BROWSE or other catalog-level
+    # privileges, the group can discover only schemas on which it has a direct
+    # privilege. The namesake schema receives both ALL PRIVILEGES and MANAGE;
+    # MANAGE must be explicit because Unity Catalog excludes it from
+    # ALL PRIVILEGES. Ownership is then transferred to a stable admin group.
     statements = [
+        f"REVOKE ALL PRIVILEGES ON CATALOG {catalog_ident} FROM {group_ident}",
+        (
+            "REVOKE BROWSE, MANAGE, READ METADATA ON CATALOG "
+            f"{catalog_ident} FROM {group_ident}"
+        ),
+        f"GRANT USE CATALOG ON CATALOG {catalog_ident} TO {group_ident}",
         f"CREATE SCHEMA IF NOT EXISTS {schema_ident}",
         f"GRANT ALL PRIVILEGES ON SCHEMA {schema_ident} TO {group_ident}",
+        f"GRANT MANAGE ON SCHEMA {schema_ident} TO {group_ident}",
         f"ALTER SCHEMA {schema_ident} OWNER TO {owner_ident}",
     ]
 

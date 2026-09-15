@@ -6,7 +6,7 @@ resources:
         - name: csv_path
           default: /Volumes/admin/workshop_provisioning/user_provisioning/users.csv
         - name: catalog
-          default: lakebase_hackathon
+          default: databricks-hackathon
         - name: schema_owner_group
           default: workshop_admins
         - name: run_live
