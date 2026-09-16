@@ -1,0 +1,4 @@
+interface:
+  display_name: "Validate Hackathon Workspace"
+  short_description: "Audit and complete workspace readiness checks"
+  default_prompt: "Use $validate-hackathon-workspace to audit a newly created hackathon workspace and complete missing setup."
