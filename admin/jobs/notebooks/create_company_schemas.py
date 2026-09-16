@@ -16,14 +16,22 @@ dbutils.widgets.text(
 )
 dbutils.widgets.text("schema_owner_group", "workshop_admins")
 dbutils.widgets.dropdown("run_live", "false", ["false", "true"])
+dbutils.widgets.dropdown("provision_company_schemas", "true", ["false", "true"])
 
 catalog = dbutils.widgets.get("catalog").strip()
 csv_path = dbutils.widgets.get("csv_path").strip()
 schema_owner_group = dbutils.widgets.get("schema_owner_group").strip()
 run_live = dbutils.widgets.get("run_live").strip().lower() == "true"
+provision_company_schemas = (
+    dbutils.widgets.get("provision_company_schemas").strip().lower() == "true"
+)
 
 if not all([catalog, csv_path, schema_owner_group]):
     raise ValueError("catalog, csv_path, and schema_owner_group parameters are required")
+
+if not provision_company_schemas:
+    print("Company schema provisioning skipped (provision_company_schemas=false)")
+    dbutils.notebook.exit("Company schema provisioning skipped")
 
 # COMMAND ----------
 

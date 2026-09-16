@@ -24,6 +24,10 @@ dbutils.widgets.text(
     "csv_path", "/Volumes/admin/workshop_provisioning/user_provisioning/users.csv"
 )
 dbutils.widgets.dropdown("run_live", "false", ["false", "true"])
+dbutils.widgets.dropdown(
+    "grant_databricks_sql_access", "true", ["false", "true"]
+)
+dbutils.widgets.dropdown("provision_git_folders", "true", ["false", "true"])
 
 account_host = dbutils.widgets.get("account_host").strip()
 secret_scope = dbutils.widgets.get("secret_scope").strip()
@@ -34,6 +38,12 @@ admin_sp_username_secret_key = dbutils.widgets.get(
 admin_sp_client_secret_key = dbutils.widgets.get("admin_sp_client_secret_key").strip()
 csv_path = dbutils.widgets.get("csv_path").strip()
 run_live = dbutils.widgets.get("run_live").strip().lower() == "true"
+grant_databricks_sql_access = (
+    dbutils.widgets.get("grant_databricks_sql_access").strip().lower() == "true"
+)
+provision_git_folders = (
+    dbutils.widgets.get("provision_git_folders").strip().lower() == "true"
+)
 
 if not all(
     [
@@ -66,6 +76,12 @@ REPO_NAME = "databricks-dnb-hackathon"
 REPO_BRANCH = "develop"
 WORKSPACE_SYNC_ATTEMPTS = 30
 WORKSPACE_SYNC_INTERVAL_SECONDS = 10
+WORKSPACE_ACCESS_ENTITLEMENT = "workspace-access"
+DATABRICKS_SQL_ACCESS_ENTITLEMENT = "databricks-sql-access"
+WORKSPACE_ACCESS_PERMISSIONS = {
+    iam.WorkspacePermission.USER,
+    iam.WorkspacePermission.ADMIN,
+}
 
 
 def load_users(path: str) -> list[dict[str, str]]:
@@ -142,6 +158,54 @@ def wait_for_workspace_user(user_id: str, email: str) -> None:
             time.sleep(WORKSPACE_SYNC_INTERVAL_SECONDS)
 
 
+def ensure_workspace_group_entitlements(
+    group_id: str, group_name: str, desired_entitlements: list[str]
+) -> None:
+    for attempt in range(1, WORKSPACE_SYNC_ATTEMPTS + 1):
+        try:
+            workspace_group = workspace_client.groups.get(group_id)
+            break
+        except ResourceDoesNotExist:
+            if attempt == WORKSPACE_SYNC_ATTEMPTS:
+                raise
+            print(
+                f"  waiting for {group_name!r} workspace group "
+                f"({attempt}/{WORKSPACE_SYNC_ATTEMPTS})"
+            )
+            time.sleep(WORKSPACE_SYNC_INTERVAL_SECONDS)
+
+    current_entitlements = {
+        entitlement.value
+        for entitlement in (workspace_group.entitlements or [])
+        if entitlement.value
+    }
+    missing_entitlements = [
+        entitlement
+        for entitlement in desired_entitlements
+        if entitlement not in current_entitlements
+    ]
+    if not missing_entitlements:
+        print(
+            "  group entitlements: exist " + ", ".join(desired_entitlements)
+        )
+        return
+
+    workspace_client.groups.patch(
+        group_id,
+        operations=[
+            iam.Patch(
+                op=iam.PatchOp.ADD,
+                path="entitlements",
+                value=[{"value": value} for value in missing_entitlements],
+            )
+        ],
+        schemas=[
+            iam.PatchSchema.URN_IETF_PARAMS_SCIM_API_MESSAGES_2_0_PATCH_OP
+        ],
+    )
+    print("  group entitlements: granted " + ", ".join(missing_entitlements))
+
+
 rows = load_users(csv_path)
 account_client = AccountClient(
     host=account_host,
@@ -169,8 +233,12 @@ workspace_assignments = {
 }
 
 mode = "LIVE" if run_live else "DRY RUN"
+desired_entitlements = [WORKSPACE_ACCESS_ENTITLEMENT]
+if grant_databricks_sql_access:
+    desired_entitlements.append(DATABRICKS_SQL_ACCESS_ENTITLEMENT)
 print(f"Mode: {mode}")
 print(f"Validated users: {len(rows)}")
+print(f"Company group entitlements: {', '.join(desired_entitlements)}")
 
 for row in rows:
     email = row["email_address"]
@@ -219,8 +287,8 @@ for row in rows:
         else:
             print("  group membership: exists")
 
-        if iam.WorkspacePermission.USER not in workspace_assignments.get(
-            group.id, set()
+        if not WORKSPACE_ACCESS_PERMISSIONS.intersection(
+            workspace_assignments.get(group.id, set())
         ):
             account_client.workspace_assignment.update(
                 workspace_id,
@@ -232,8 +300,8 @@ for row in rows:
         else:
             print("  workspace access: exists")
 
-        if iam.WorkspacePermission.USER not in workspace_assignments.get(
-            user.id, set()
+        if not WORKSPACE_ACCESS_PERMISSIONS.intersection(
+            workspace_assignments.get(user.id, set())
         ):
             account_client.workspace_assignment.update(
                 workspace_id,
@@ -244,11 +312,21 @@ for row in rows:
             print("  user workspace: assigned")
         else:
             print("  user workspace: exists")
+        ensure_workspace_group_entitlements(
+            group.id, company, desired_entitlements
+        )
         wait_for_workspace_user(user.id, email)
     else:
         print("  group membership: ensure")
         print("  workspace access: ensure for company group")
         print("  user workspace: ensure")
+        print(
+            "  group entitlements: ensure " + ", ".join(desired_entitlements)
+        )
+
+    if not provision_git_folders:
+        print("  Git folder: skipped (provision_git_folders=false)")
+        continue
 
     repo_path = f"/Users/{email}/{REPO_NAME}"
     existing_repo = next(
@@ -271,7 +349,14 @@ for row in rows:
             if created_repo.id is None:
                 raise ValueError(f"Repo creation returned no ID for {email!r}")
             repo_id = created_repo.id
-            workspace_client.repos.update(repo_id, branch=REPO_BRANCH)
+            # The repository's default branch is REPO_BRANCH. Avoid updating a
+            # Git folder immediately after creation: the clone can still be
+            # initializing its index, which makes the PATCH trigger a failing
+            # fetch with ".git/index: index file open failed". Existing folders
+            # are still corrected below if their branch differs.
+            if created_repo.branch and created_repo.branch != REPO_BRANCH:
+                workspace_client.repos.update(repo_id, branch=REPO_BRANCH)
+                print(f"  Git branch: updated to {REPO_BRANCH}")
     else:
         print(f"  Git folder: exists {repo_path}")
         if (

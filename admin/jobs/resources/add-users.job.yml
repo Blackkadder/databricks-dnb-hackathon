@@ -11,6 +11,12 @@ resources:
           default: workshop_admins
         - name: run_live
           default: "false"
+        - name: grant_databricks_sql_access
+          default: "true"
+        - name: provision_git_folders
+          default: "true"
+        - name: provision_company_schemas
+          default: "true"
       tasks:
         - task_key: add_hackathon_users
           notebook_task:
@@ -23,6 +29,8 @@ resources:
               admin_sp_client_secret_key: ${var.admin_sp_client_secret_key}
               csv_path: "{{job.parameters.csv_path}}"
               run_live: "{{job.parameters.run_live}}"
+              grant_databricks_sql_access: "{{job.parameters.grant_databricks_sql_access}}"
+              provision_git_folders: "{{job.parameters.provision_git_folders}}"
         - task_key: create_company_schemas
           depends_on:
             - task_key: add_hackathon_users
@@ -33,3 +41,4 @@ resources:
               schema_owner_group: "{{job.parameters.schema_owner_group}}"
               csv_path: "{{job.parameters.csv_path}}"
               run_live: "{{job.parameters.run_live}}"
+              provision_company_schemas: "{{job.parameters.provision_company_schemas}}"

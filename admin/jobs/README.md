@@ -14,7 +14,8 @@ For each row, the job idempotently:
 
 1. creates the account-level user if needed;
 2. creates or reuses an account group whose name exactly matches `company`;
-3. adds the user to that group and grants the group and user `USER` access to the current workspace;
+3. adds the user to that group, grants the group and user `USER` access to the
+   current workspace, and explicitly grants the company group `workspace-access`;
 4. creates `/Users/<email>/databricks-dnb-hackathon` from the `develop` branch; and
 5. grants that user `CAN_MANAGE` on their Git folder.
 
@@ -22,6 +23,18 @@ The job dry-runs by default. Upload the CSV, then run it once with its
 default `csv_path` of
 `/Volumes/admin/workshop_provisioning/user_provisioning/users.csv`. Review the
 output before running it again with `run_live=true`.
+
+The `grant_databricks_sql_access` parameter defaults to `true`, which also
+grants each company group `databricks-sql-access`. Set it to `false` when
+participants should have workspace authoring access without Databricks SQL.
+
+Set `provision_git_folders=false` to provision identities, entitlements, and
+schemas without creating per-user Git folders. This is useful when the external
+Git provider or the Databricks Git-folder service is temporarily unavailable.
+
+Set `provision_company_schemas=false` for an identity-only run when the supplied
+catalog is not available. The schema task exits successfully without executing
+any catalog statements.
 
 ### Per-company schemas
 
