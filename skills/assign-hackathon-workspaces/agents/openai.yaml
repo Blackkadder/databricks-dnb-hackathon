@@ -1,0 +1,4 @@
+interface:
+  display_name: "Assign Hackathon Workspaces"
+  short_description: "Balance teams across Databricks workspaces"
+  default_prompt: "Use $assign-hackathon-workspaces to assign this roster across the supplied Databricks workspaces."

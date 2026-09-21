@@ -8,7 +8,7 @@ resources:
         - name: catalog
           default: databricks-hackathon
         - name: schema_owner_group
-          default: workshop_admins
+          default: rob.bajra@databricks.com
         - name: run_live
           default: "false"
         - name: grant_databricks_sql_access

@@ -4,14 +4,12 @@
 
 # COMMAND ----------
 
-import csv
-import re
 import time
-from pathlib import Path
 
 from databricks.sdk import AccountClient, WorkspaceClient
 from databricks.sdk.errors import ResourceDoesNotExist
 from databricks.sdk.service import iam, workspace
+from provisioning_csv import load_provisioning_rows, rows_for_workspace
 
 # COMMAND ----------
 
@@ -69,8 +67,6 @@ if not all([account_id, client_id, client_secret]):
 
 # COMMAND ----------
 
-EXPECTED_HEADERS = {"email_address", "company"}
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 REPO_URL = "https://github.com/Blackkadder/databricks-dnb-hackathon.git"
 REPO_NAME = "databricks-dnb-hackathon"
 REPO_BRANCH = "develop"
@@ -82,39 +78,6 @@ WORKSPACE_ACCESS_PERMISSIONS = {
     iam.WorkspacePermission.USER,
     iam.WorkspacePermission.ADMIN,
 }
-
-
-def load_users(path: str) -> list[dict[str, str]]:
-    with Path(path).open(newline="", encoding="utf-8-sig") as csv_file:
-        reader = csv.DictReader(csv_file)
-        headers = set(reader.fieldnames or [])
-        if headers != EXPECTED_HEADERS:
-            raise ValueError(
-                f"CSV headers must be exactly {sorted(EXPECTED_HEADERS)}; got {sorted(headers)}"
-            )
-
-        rows = []
-        seen_emails: dict[str, str] = {}
-        for line_number, raw_row in enumerate(reader, start=2):
-            email = (raw_row.get("email_address") or "").strip().lower()
-            company = (raw_row.get("company") or "").strip()
-            if not EMAIL_PATTERN.fullmatch(email):
-                raise ValueError(
-                    f"Invalid email_address on CSV line {line_number}: {email!r}"
-                )
-            if not company:
-                raise ValueError(f"company is required on CSV line {line_number}")
-            previous_company = seen_emails.get(email)
-            if previous_company and previous_company.casefold() != company.casefold():
-                raise ValueError(f"User {email!r} is assigned to multiple companies")
-            if previous_company:
-                continue
-            seen_emails[email] = company
-            rows.append({"email_address": email, "company": company})
-
-    if not rows:
-        raise ValueError("CSV must contain at least one user")
-    return rows
 
 
 def grant_repo_permission(repo_id: int, email: str) -> None:
@@ -206,16 +169,26 @@ def ensure_workspace_group_entitlements(
     print("  group entitlements: granted " + ", ".join(missing_entitlements))
 
 
-rows = load_users(csv_path)
+all_rows = load_provisioning_rows(csv_path)
+workspace_client = WorkspaceClient()
+workspace_id = workspace_client.get_workspace_id()
+rows = rows_for_workspace(all_rows, workspace_id)
+
+print(f"Current workspace ID: {workspace_id}")
+print(f"Validated CSV users: {len(all_rows)}")
+print(f"Users selected for this workspace: {len(rows)}")
+print(f"Users skipped for other workspaces: {len(all_rows) - len(rows)}")
+if not rows:
+    dbutils.notebook.exit(
+        f"No users are assigned to workspace {workspace_id}; no changes were made"
+    )
+
 account_client = AccountClient(
     host=account_host,
     account_id=account_id,
     client_id=client_id,
     client_secret=client_secret,
 )
-workspace_client = WorkspaceClient()
-workspace_id = workspace_client.get_workspace_id()
-
 users_by_name = {
     user.user_name.casefold(): user
     for user in account_client.users.list()
@@ -237,7 +210,6 @@ desired_entitlements = [WORKSPACE_ACCESS_ENTITLEMENT]
 if grant_databricks_sql_access:
     desired_entitlements.append(DATABRICKS_SQL_ACCESS_ENTITLEMENT)
 print(f"Mode: {mode}")
-print(f"Validated users: {len(rows)}")
 print(f"Company group entitlements: {', '.join(desired_entitlements)}")
 
 for row in rows:

@@ -4,9 +4,10 @@
 
 # COMMAND ----------
 
-import csv
 import re
-from pathlib import Path
+
+from databricks.sdk import WorkspaceClient
+from provisioning_csv import load_provisioning_rows, rows_for_workspace
 
 # COMMAND ----------
 
@@ -14,7 +15,7 @@ dbutils.widgets.text("catalog", "databricks-hackathon")
 dbutils.widgets.text(
     "csv_path", "/Volumes/admin/workshop_provisioning/user_provisioning/users.csv"
 )
-dbutils.widgets.text("schema_owner_group", "workshop_admins")
+dbutils.widgets.text("schema_owner_group", "rob.bajra@databricks.com")
 dbutils.widgets.dropdown("run_live", "false", ["false", "true"])
 dbutils.widgets.dropdown("provision_company_schemas", "true", ["false", "true"])
 
@@ -35,37 +36,7 @@ if not provision_company_schemas:
 
 # COMMAND ----------
 
-EXPECTED_HEADERS = {"email_address", "company"}
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 ACCOUNT_USERS_GROUP = "account users"
-
-
-def load_companies(path: str) -> dict[str, str]:
-    """Return distinct companies from the CSV, keyed by casefold, value is the
-    first-seen original string (which is also the account group display name)."""
-    with Path(path).open(newline="", encoding="utf-8-sig") as csv_file:
-        reader = csv.DictReader(csv_file)
-        headers = set(reader.fieldnames or [])
-        if headers != EXPECTED_HEADERS:
-            raise ValueError(
-                f"CSV headers must be exactly {sorted(EXPECTED_HEADERS)}; got {sorted(headers)}"
-            )
-
-        companies: dict[str, str] = {}
-        for line_number, raw_row in enumerate(reader, start=2):
-            email = (raw_row.get("email_address") or "").strip().lower()
-            company = (raw_row.get("company") or "").strip()
-            if not EMAIL_PATTERN.fullmatch(email):
-                raise ValueError(
-                    f"Invalid email_address on CSV line {line_number}: {email!r}"
-                )
-            if not company:
-                raise ValueError(f"company is required on CSV line {line_number}")
-            companies.setdefault(company.casefold(), company)
-
-    if not companies:
-        raise ValueError("CSV must contain at least one company")
-    return companies
 
 
 def sanitize_schema_name(company: str) -> str:
@@ -83,7 +54,22 @@ def quote_identifier(identifier: str) -> str:
 
 # COMMAND ----------
 
-companies = load_companies(csv_path)
+all_rows = load_provisioning_rows(csv_path)
+workspace_id = WorkspaceClient().get_workspace_id()
+rows = rows_for_workspace(all_rows, workspace_id)
+
+print(f"Current workspace ID: {workspace_id}")
+print(f"Validated CSV users: {len(all_rows)}")
+print(f"Users selected for this workspace: {len(rows)}")
+print(f"Users skipped for other workspaces: {len(all_rows) - len(rows)}")
+if not rows:
+    dbutils.notebook.exit(
+        f"No companies are assigned to workspace {workspace_id}; no changes were made"
+    )
+
+companies: dict[str, str] = {}
+for row in rows:
+    companies.setdefault(row["company"].casefold(), row["company"])
 
 # Map each distinct company to its sanitized schema name, failing loudly if two
 # different company strings would collapse into the same schema.
@@ -103,7 +89,7 @@ for company in companies.values():
 mode = "LIVE" if run_live else "DRY RUN"
 print(f"Mode: {mode}")
 print(f"Catalog: {catalog}")
-print(f"Schema owner group: {schema_owner_group}")
+print(f"Schema owner principal: {schema_owner_group}")
 print(f"Distinct companies: {len(schema_by_company)}")
 
 # COMMAND ----------
