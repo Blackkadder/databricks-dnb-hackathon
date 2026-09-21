@@ -1,6 +1,6 @@
 ---
 name: validate-hackathon-workspace
-description: Audit and complete a newly created Databricks hackathon workspace, including administrator access, users, team groups, schemas, cross-team isolation, expected workspace resources, and per-user Git folders. Use for post-creation readiness checks or targeted remediation when workspace IDs, catalogs, schemas, or team rosters vary.
+description: Audit and complete a newly created Databricks hackathon workspace, including administrator access, user authentication readiness, team groups, schemas, cross-team isolation, expected workspace resources, and per-user Git folders. Use for post-creation readiness checks or targeted remediation when workspace IDs, catalogs, schemas, or team rosters vary.
 ---
 
 # Validate Hackathon Workspace
@@ -48,6 +48,7 @@ Collect read-only evidence for the full matrix:
 
 - List all account workspaces, administrators, account users, account groups, nested group membership, and workspace permission assignments.
 - Confirm expected users are active, synced into the target workspace, assigned `USER` or `ADMIN` as intended, and receive `workspace-access` through a direct or group path. Check optional entitlements such as `databricks-sql-access` only when required.
+- Confirm personal access token authentication is enabled and the built-in `users` group has direct `CAN_USE` on `authorization/tokens`. Record both the workspace configuration and token ACL; user presence alone does not prove token access.
 - Confirm each expected team group exists and has exactly the expected roster after accounting for nested membership. Unexpected cross-team membership is an isolation failure, not just a warning.
 - Inventory the target catalogs and schemas. Inspect catalog-, schema-, and object-level grants plus ownership for every direct and inherited principal relevant to each user.
 - Inventory the in-scope workspace resources and their ACLs. Include home directories and Git folders; include jobs, pipelines, clusters/policies, warehouses, apps, dashboards, or other objects only when the resource manifest puts them in scope.
@@ -71,7 +72,7 @@ An admin-side grant/ACL analysis without representative-user tests can establish
 
 Show the proposed changes and their exact targets before live mutation. Make the smallest idempotent change that reaches the expected state, then re-audit affected and downstream checks.
 
-This repository's preferred provisioning path is `admin/jobs`, whose `add-hackathon-account-users` job supports `csv_path`, `catalog`, `schema_owner_group`, `grant_databricks_sql_access`, `provision_git_folders`, and `provision_company_schemas`. It provisions account users, team groups and membership, target-workspace assignments, team entitlements, per-team schemas, and per-user Git folders.
+This repository's preferred provisioning path is `admin/jobs`, whose `add-hackathon-account-users` job supports `csv_path`, `catalog`, `schema_owner_group`, `grant_databricks_sql_access`, `provision_git_folders`, and `provision_company_schemas`. It provisions account users, team groups and membership, target-workspace assignments, team entitlements, personal access token readiness, per-team schemas, and per-user Git folders.
 
 When using that job:
 
@@ -80,6 +81,8 @@ When using that job:
 3. Verify the hard-coded or configured repository URL, branch, and folder convention match the expected Git state.
 4. Run and review `run_live=false` first. Do not proceed if the dry run targets unexpected principals, catalogs, schemas, or paths.
 5. Run with `run_live=true` only after live execution is authorized, monitor every task, and retain the run ID and task results as evidence.
+
+The `configure_pat_access` task must report `enableTokensConfig=true` and direct `CAN_USE` for the built-in `users` group before the workspace is ready. Independently recheck with `databricks workspace-conf get-status enableTokensConfig` and `databricks permissions get authorization tokens` against the target workspace profile; do not rely only on task success.
 
 The job does not prove every administrator has access to every account workspace, and it is not a generic workspace-resource deployer. Fix missing admin assignments through the account Workspace Assignment API. Populate other declared resources through their native Databricks APIs or their existing deployment definitions, applying only the manifest's owner and ACLs. Do not broaden grants to make a deployment succeed.
 

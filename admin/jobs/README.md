@@ -16,7 +16,7 @@ the ID of the workspace in which it is running and provisions only rows whose
 `workspace_id` matches. Rows for other workspaces are validated but skipped.
 The `workspace_id` must be a positive integer, and a company (team) may be
 assigned to only one workspace across the entire file. If no rows match the
-current workspace, both tasks exit successfully without making changes.
+current workspace, all tasks exit successfully without making changes.
 
 For each matching row, the job idempotently:
 
@@ -26,6 +26,15 @@ For each matching row, the job idempotently:
    current workspace, and explicitly grants the company group `workspace-access`;
 4. creates `/Users/<email>/databricks-dnb-hackathon` from the `develop` branch; and
 5. grants that user `CAN_MANAGE` on their Git folder.
+
+After user provisioning, the `configure_pat_access` task idempotently enables
+personal access token authentication for the workspace and grants the built-in
+`users` group `CAN_USE` on tokens. In dry-run mode it reports the current state
+and required changes without modifying either setting. The downstream schema
+task runs only after this readiness step succeeds.
+
+The job's run-as identity must be a workspace admin to read and update the
+workspace PAT setting and token permissions.
 
 The job dry-runs by default. Upload the CSV, then run it once with its
 default `csv_path` of
