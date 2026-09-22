@@ -1,4 +1,48 @@
-# Account administration jobs
+# Hackathon administration jobs
+
+## Copy source data to every participant schema
+
+The `copy-schema-data-to-all-schemas` job copies one source schema into every
+eligible schema in a destination catalog. It is configured for
+`databricks-hackathon.00data` by default and automatically excludes that source
+schema when the source and destination catalogs are the same. Unity Catalog's
+read-only `information_schema` is always excluded.
+
+The job discovers objects at runtime and performs a complete preflight before
+the first write. It:
+
+1. deep-clones every source Delta table, creating independent destination data;
+2. recreates regular views after their tables and dependent views exist;
+3. rewrites references to the source schema so they target the corresponding
+   objects in each destination schema; and
+4. preserves view references to all other schemas and catalogs.
+
+The job dry-runs by default. Existing destination objects are treated as
+conflicts unless `overwrite_existing=true`; this protects participant work from
+an accidental refresh. When overwrite is enabled, tables and views are replaced.
+If an existing object's kind differs from the source (for example, a view exists
+where the source has a table), the conflicting object is dropped before its
+replacement is created. Review a successful dry run before setting
+`run_live=true`.
+
+| Job parameter | Default | Purpose |
+|---|---|---|
+| `source_catalog` | `databricks-hackathon` | Catalog containing the source schema |
+| `source_schema` | `00data` | Schema whose Delta tables and views are copied |
+| `destination_catalog` | `databricks-hackathon` | Catalog whose schemas receive the objects |
+| `excluded_destination_schemas` | `information_schema` | Additional comma-separated schemas to skip |
+| `overwrite_existing` | `false` | Replace conflicting destination tables and views |
+| `run_live` | `false` | Execute the displayed DDL instead of dry-running |
+
+Non-Delta tables, materialized views, streaming tables, foreign tables, and
+other specialized relations cause preflight to fail rather than producing an
+incomplete copy. The task's run-as principal needs `USE CATALOG` and
+`USE SCHEMA`, `SELECT` on the source tables, and permission to create tables and
+views in every destination schema. Replacing objects also requires ownership or
+`MANAGE` on those objects.
+
+- Definition: [`resources/copy-schema-data.job.yml`](resources/copy-schema-data.job.yml)
+- Notebook: [`notebooks/copy_schema_data.py`](notebooks/copy_schema_data.py)
 
 ## Add hackathon users
 

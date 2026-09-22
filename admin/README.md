@@ -1,15 +1,20 @@
 # Admin jobs
 
-The jobs in [`jobs/`](jobs/) clean up Databricks account identities after the
-hackathon. They are deployed together as the
-`hackathon-account-identity-cleanup` Databricks Asset Bundle, but each job can
-be run independently.
+The jobs in [`jobs/`](jobs/) provision the hackathon environment, distribute
+seed data, and clean up Databricks account identities after the event. They are
+deployed together as the `hackathon-account-identity-cleanup` Databricks Asset
+Bundle, but each job can be run independently.
 
-All three jobs are destructive only when the `run_live` job parameter is set to
-`true`. Its default is `false`, which produces a dry-run report of the objects
-that would be deleted. Review a successful dry run before starting a live run.
+Administrative mutations are dry-run-only unless the `run_live` job parameter
+is set to `true`. Its default is `false`. Review a successful dry run before
+starting a live run.
 
-## Jobs and their roles
+Data distribution and participant provisioning are documented in the
+[`jobs` README](jobs/README.md). The data-copy job deep-clones the source Delta
+tables into every eligible destination schema and recreates views so they refer
+to the copied tables in that same schema.
+
+## Cleanup jobs and their roles
 
 ### `remove-non-admin-account-users`
 
@@ -55,11 +60,12 @@ the baseline groups required by the workshop environment.
 - Definition: [`jobs/resources/remove-groups.job.yml`](jobs/resources/remove-groups.job.yml)
 - Notebook: [`jobs/notebooks/remove_groups.py`](jobs/notebooks/remove_groups.py)
 
-## Shared configuration
+## Cleanup job configuration
 
-The jobs authenticate to the Databricks account with an account-admin service
-principal. Bundle variables in [`jobs/databricks.yml`](jobs/databricks.yml)
-identify the account host and the workspace secret scope and keys containing:
+The cleanup jobs authenticate to the Databricks account with an account-admin
+service principal. Bundle variables in
+[`jobs/databricks.yml`](jobs/databricks.yml) identify the account host and the
+workspace secret scope and keys containing:
 
 - the Databricks account ID;
 - the admin service principal client ID; and

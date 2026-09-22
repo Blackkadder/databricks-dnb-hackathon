@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    copy_schema_data_to_all_schemas:
+      name: copy-schema-data-to-all-schemas
+      parameters:
+        - name: source_catalog
+          default: databricks-hackathon
+        - name: source_schema
+          default: 00data
+        - name: destination_catalog
+          default: databricks-hackathon
+        - name: excluded_destination_schemas
+          default: information_schema
+        - name: overwrite_existing
+          default: "false"
+        - name: run_live
+          default: "false"
+      tasks:
+        - task_key: copy_schema_data_to_all_schemas
+          notebook_task:
+            notebook_path: ../notebooks/copy_schema_data.py
+            base_parameters:
+              source_catalog: "{{job.parameters.source_catalog}}"
+              source_schema: "{{job.parameters.source_schema}}"
+              destination_catalog: "{{job.parameters.destination_catalog}}"
+              excluded_destination_schemas: "{{job.parameters.excluded_destination_schemas}}"
+              overwrite_existing: "{{job.parameters.overwrite_existing}}"
+              run_live: "{{job.parameters.run_live}}"
