@@ -68,8 +68,10 @@ For each matching row, the job idempotently:
 2. creates or reuses an account group whose name exactly matches `company`;
 3. adds the user to that group, grants the group and user `USER` access to the
    current workspace, and explicitly grants the company group `workspace-access`;
-4. creates `/Users/<email>/databricks-dnb-hackathon` from the `develop` branch; and
-5. grants that user `CAN_MANAGE` on their Git folder.
+4. creates these per-user Git folders:
+   - `/Users/<email>/databricks-dnb-hackathon` from the `develop` branch;
+   - `/Users/<email>/databricks-genie-agents-mlflow` from the `main` branch; and
+5. grants that user `CAN_MANAGE` on both Git folders.
 
 After user provisioning, the `configure_pat_access` task idempotently enables
 personal access token authentication for the workspace and grants the built-in

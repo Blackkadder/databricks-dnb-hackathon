@@ -28,6 +28,16 @@ targets:
     workspace:
       host: https://dbc-2124425a-10dd.cloud.databricks.com/
 
+  workspace_7474650842988229:
+    mode: development
+    workspace:
+      host: https://dbc-7f5ee9e8-6a84.cloud.databricks.com/
+
+  workspace_7474651394607811:
+    mode: development
+    workspace:
+      host: https://dbc-9d25a17d-f58c.cloud.databricks.com/
+
   workspace_7474656240794355:
     mode: development
     workspace:

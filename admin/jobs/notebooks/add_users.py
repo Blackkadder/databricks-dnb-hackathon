@@ -67,9 +67,18 @@ if not all([account_id, client_id, client_secret]):
 
 # COMMAND ----------
 
-REPO_URL = "https://github.com/Blackkadder/databricks-dnb-hackathon.git"
-REPO_NAME = "databricks-dnb-hackathon"
-REPO_BRANCH = "develop"
+REPOSITORIES = (
+    {
+        "url": "https://github.com/Blackkadder/databricks-dnb-hackathon.git",
+        "name": "databricks-dnb-hackathon",
+        "branch": "develop",
+    },
+    {
+        "url": "https://github.com/bcheng004/databricks-genie-agents-mlflow.git",
+        "name": "databricks-genie-agents-mlflow",
+        "branch": "main",
+    },
+)
 WORKSPACE_SYNC_ATTEMPTS = 30
 WORKSPACE_SYNC_INTERVAL_SECONDS = 10
 WORKSPACE_ACCESS_ENTITLEMENT = "workspace-access"
@@ -115,7 +124,7 @@ def wait_for_workspace_user(user_id: str, email: str) -> None:
             if attempt == WORKSPACE_SYNC_ATTEMPTS:
                 raise
             print(
-                f"  waiting for {email} workspace home "
+                f"  waiting for {email} workspace identity "
                 f"({attempt}/{WORKSPACE_SYNC_ATTEMPTS})"
             )
             time.sleep(WORKSPACE_SYNC_INTERVAL_SECONDS)
@@ -300,52 +309,60 @@ for row in rows:
         print("  Git folder: skipped (provision_git_folders=false)")
         continue
 
-    repo_path = f"/Users/{email}/{REPO_NAME}"
-    existing_repo = next(
-        (
-            repo
-            for repo in workspace_client.repos.list(path_prefix=repo_path)
-            if repo.path == repo_path
-        ),
-        None,
-    )
-    repo_id = existing_repo.id if existing_repo is not None else None
-    if existing_repo is None:
-        print(f"  Git folder: create {repo_path} at branch {REPO_BRANCH}")
-        if run_live:
-            created_repo = workspace_client.repos.create(
-                url=REPO_URL,
-                provider="gitHub",
-                path=repo_path,
-            )
-            if created_repo.id is None:
-                raise ValueError(f"Repo creation returned no ID for {email!r}")
-            repo_id = created_repo.id
-            # The repository's default branch is REPO_BRANCH. Avoid updating a
-            # Git folder immediately after creation: the clone can still be
-            # initializing its index, which makes the PATCH trigger a failing
-            # fetch with ".git/index: index file open failed". Existing folders
-            # are still corrected below if their branch differs.
-            if created_repo.branch and created_repo.branch != REPO_BRANCH:
-                workspace_client.repos.update(repo_id, branch=REPO_BRANCH)
-                print(f"  Git branch: updated to {REPO_BRANCH}")
-    else:
-        print(f"  Git folder: exists {repo_path}")
-        if (
-            run_live
-            and existing_repo.id is not None
-            and existing_repo.branch != REPO_BRANCH
-        ):
-            workspace_client.repos.update(existing_repo.id, branch=REPO_BRANCH)
-            print(f"  Git branch: updated to {REPO_BRANCH}")
+    # Build Git-folder paths from the account user's canonical userName, which
+    # can differ in case from the lowercased CSV email (e.g. a pre-existing
+    # account whose username is "First.Last@corp.com"). The per-user home lives
+    # at /Users/<canonical userName>, and creating a repo there auto-provisions
+    # the home; the lowercased email would point at a non-existent parent path.
+    home_identity = user.user_name if (user and user.user_name) else email
+    for repository in REPOSITORIES:
+        repo_url = repository["url"]
+        repo_name = repository["name"]
+        repo_branch = repository["branch"]
+        repo_path = f"/Users/{home_identity}/{repo_name}"
+        existing_repo = next(
+            (
+                repo
+                for repo in workspace_client.repos.list(path_prefix=repo_path)
+                if repo.path == repo_path
+            ),
+            None,
+        )
+        repo_id = existing_repo.id if existing_repo is not None else None
+        if existing_repo is None:
+            print(f"  Git folder: create {repo_path} at branch {repo_branch}")
+            if run_live:
+                created_repo = workspace_client.repos.create(
+                    url=repo_url,
+                    provider="gitHub",
+                    path=repo_path,
+                )
+                if created_repo.id is None:
+                    raise ValueError(f"Repo creation returned no ID for {email!r}")
+                repo_id = created_repo.id
+                # Avoid updating a Git folder immediately after creation: the
+                # clone can still be initializing its index. Existing folders
+                # are corrected below if their branch differs.
+                if created_repo.branch and created_repo.branch != repo_branch:
+                    workspace_client.repos.update(repo_id, branch=repo_branch)
+                    print(f"  Git branch: updated to {repo_branch}")
+        else:
+            print(f"  Git folder: exists {repo_path}")
+            if (
+                run_live
+                and existing_repo.id is not None
+                and existing_repo.branch != repo_branch
+            ):
+                workspace_client.repos.update(existing_repo.id, branch=repo_branch)
+                print(f"  Git branch: updated to {repo_branch}")
 
-    if run_live:
-        if repo_id is None:
-            raise ValueError(f"Git folder has no ID for {email!r}")
-        grant_repo_permission(repo_id, email)
-        print("  Git folder permission: CAN_MANAGE")
-    else:
-        print("  Git folder permission: ensure CAN_MANAGE")
+        if run_live:
+            if repo_id is None:
+                raise ValueError(f"Git folder has no ID for {email!r}")
+            grant_repo_permission(repo_id, email)
+            print("  Git folder permission: CAN_MANAGE")
+        else:
+            print("  Git folder permission: ensure CAN_MANAGE")
 
 print(
     "\nProvisioning complete."
