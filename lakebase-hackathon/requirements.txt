@@ -1,0 +1,6 @@
+# Runtime dependencies for the Lakebase notebook & connection manager.
+# (On Databricks these are provided/pip-installed in-notebook; pinned here so the
+# offline test suite can import the same modules locally.)
+databricks-sdk>=0.81.0
+psycopg[binary]>=3.0
+sqlalchemy>=2.0

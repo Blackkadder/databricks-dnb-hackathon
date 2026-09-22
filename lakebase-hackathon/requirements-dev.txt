@@ -1,0 +1,6 @@
+# Dev/test dependencies. Install into the project venv:
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8.0
+black>=24.0
