@@ -4,7 +4,16 @@ import { z } from 'zod';
 const STATUSES = ['Open', 'In Progress', 'Blocked', 'Resolved', 'Closed'] as const;
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const;
 const CATEGORIES = ['Workspace access', 'Lakebase', 'Databricks App', 'Data', 'Authentication', 'Other'] as const;
-const WORKSPACE_ID = '7474651394607811';
+const WORKSPACE_IDS_BY_HOST: Record<string, string> = {
+  'dbc-9d25a17d-f58c.cloud.databricks.com': '7474651394607811',
+  'dbc-7f5ee9e8-6a84.cloud.databricks.com': '7474650842988229',
+};
+
+function workspaceId() {
+  if (process.env.WORKSPACE_ID) return process.env.WORKSPACE_ID;
+  const host = (process.env.DATABRICKS_HOST || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  return WORKSPACE_IDS_BY_HOST[host] || '7474651394607811';
+}
 
 interface Queryable {
   query(text: string, params?: unknown[]): Promise<{ rows: Record<string, any>[]; rowCount?: number | null }>;
@@ -85,22 +94,22 @@ const SEED_SQL = `
   INSERT INTO issue_tracker.issues
     (title, description, status, priority, category, company, workspace_id, reporter_email, reporter_name, assignee_email)
   SELECT * FROM (VALUES
-    ('Cannot connect to Lakebase branch', 'Connection attempts time out after the workspace was assigned.', 'Open', 'Critical', 'Lakebase', 'Acme Analytics', '7474651394607811', 'alex@acme.example', 'Alex Morgan', NULL),
-    ('App deployment is stuck', 'The deployment has remained in the starting state for more than fifteen minutes.', 'In Progress', 'High', 'Databricks App', 'Northstar Labs', '7474651394607811', 'priya@northstar.example', 'Priya Shah', 'rob.bajra@databricks.com'),
-    ('Need sample data access', 'Our team can open the workspace but cannot see the hackathon sample catalog.', 'Resolved', 'Medium', 'Data', 'Bright River', '7474651394607811', 'sam@brightriver.example', 'Sam Lee', NULL)
+    ('Cannot connect to Lakebase branch', 'Connection attempts time out after the workspace was assigned.', 'Open', 'Critical', 'Lakebase', 'Acme Analytics', $1, 'alex@acme.example', 'Alex Morgan', NULL),
+    ('App deployment is stuck', 'The deployment has remained in the starting state for more than fifteen minutes.', 'In Progress', 'High', 'Databricks App', 'Northstar Labs', $1, 'priya@northstar.example', 'Priya Shah', 'rob.bajra@databricks.com'),
+    ('Need sample data access', 'Our team can open the workspace but cannot see the hackathon sample catalog.', 'Resolved', 'Medium', 'Data', 'Bright River', $1, 'sam@brightriver.example', 'Sam Lee', NULL)
   ) AS seed(title, description, status, priority, category, company, workspace_id, reporter_email, reporter_name, assignee_email)
   WHERE NOT EXISTS (SELECT 1 FROM issue_tracker.issues);
 `;
 
 export async function setupIssueRoutes(appkit: AppKitWithLakebase) {
   await appkit.lakebase.query(SETUP_SQL);
-  await appkit.lakebase.query(SEED_SQL);
+  await appkit.lakebase.query(SEED_SQL, [workspaceId()]);
 
   appkit.server.extend((app) => {
     app.get('/api/me', async (req, res) => {
       try {
         const user = identity(req);
-        res.json({ ...user, workspaceId: WORKSPACE_ID });
+        res.json({ ...user, workspaceId: workspaceId() });
       } catch (error) {
         res.status(401).json({ error: (error as Error).message });
       }
@@ -159,7 +168,7 @@ export async function setupIssueRoutes(appkit: AppKitWithLakebase) {
              SELECT id, $7, 'created', 'Issue reported' FROM new_issue
            )
            SELECT * FROM new_issue`,
-          [body.title, body.description, body.priority, body.category, body.company, WORKSPACE_ID, user.email, user.name, body.assigneeEmail || null],
+          [body.title, body.description, body.priority, body.category, body.company, workspaceId(), user.email, user.name, body.assigneeEmail || null],
         );
         const issue = result.rows[0];
         res.status(201).json(issue);

@@ -14,9 +14,6 @@ resources:
       description: "Hackathon issue tracking and participant support with Lakebase"
       source_code_path: ./
 
-      # Start the app automatically on deploy.
-      lifecycle:
-        started: true
       # Uncomment to enable on behalf of user API scopes. Available scopes: sql, dashboards.genie, files.files, serving.serving-endpoints
 
       # The resources which this app has access to.
@@ -36,3 +33,11 @@ targets:
     variables:
       postgres_branch: projects/rob-project/branches/production
       postgres_database: projects/rob-project/branches/production/databases/databricks-postgres
+
+  workspace2:
+    workspace:
+      host: https://dbc-7f5ee9e8-6a84.cloud.databricks.com/
+
+    variables:
+      postgres_branch: projects/hackathon-help-desk/branches/production
+      postgres_database: projects/hackathon-help-desk/branches/production/databases/databricks-postgres
