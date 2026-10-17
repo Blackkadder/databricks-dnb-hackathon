@@ -16,6 +16,39 @@ to the copied tables in that same schema.
 
 ## Cleanup jobs and their roles
 
+### `pause-workspace`
+
+Stops all Databricks Apps, pauses job schedules, continuous execution and event
+triggers, cancels active and queued job runs, and stops pipeline updates in the
+workspace where it runs. Editable continuous pipelines are changed to triggered mode;
+legacy pipeline cron triggers are changed to manual. Lakebase-managed synced-table
+pipelines retain their execution mode because Databricks disallows changing it;
+their updates are stopped and verified idle. Resources and data are
+preserved. Manual starts and external automation can still restart resources.
+
+Run as a workspace administrator. The job logs a JSON inventory before changes,
+then polls a fresh inventory until all apps are stopped, job triggers are paused,
+other job runs are inactive, and pipelines are idle with editable automatic updates
+disabled. Its own run is excluded from cancellation. Failures and verification
+timeouts fail the job. `run_live=false` performs an inventory-only dry run.
+
+Deploy just this job and run it for each target (use the corresponding CLI
+profile):
+
+```bash
+cd admin/jobs
+databricks bundle deploy --select jobs.pause_workspace -t workspace_7474650842988229 -p hackathon-workspace-2
+databricks bundle run pause_workspace -t workspace_7474650842988229 -p hackathon-workspace-2 --params run_live=false
+databricks bundle run pause_workspace -t workspace_7474650842988229 -p hackathon-workspace-2 --params run_live=true
+```
+
+For `dbc-9d25a17d-f58c`, use target `workspace_7474651394607811` and profile
+`hackathon-workspace-3`. The job has no schedule and defaults to dry-run mode.
+
+- Definition: [`jobs/resources/pause-workspace.job.yml`](jobs/resources/pause-workspace.job.yml)
+- Notebook: [`jobs/notebooks/pause_workspace.py`](jobs/notebooks/pause_workspace.py)
+- Implementation: [`jobs/notebooks/workspace_pause.py`](jobs/notebooks/workspace_pause.py)
+
 ### `remove-non-admin-account-users`
 
 Removes every account user that does not have the `account_admin` role. It also

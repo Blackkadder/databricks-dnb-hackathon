@@ -1,0 +1,19 @@
+resources:
+  jobs:
+    pause_workspace:
+      name: pause-workspace
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+      parameters:
+        - name: run_live
+          default: "false"
+        - name: timeout_seconds
+          default: "1200"
+      tasks:
+        - task_key: pause_workspace
+          notebook_task:
+            notebook_path: ../notebooks/pause_workspace.py
+            base_parameters:
+              run_live: "{{job.parameters.run_live}}"
+              timeout_seconds: "{{job.parameters.timeout_seconds}}"
+              current_run_id: "{{job.run_id}}"
