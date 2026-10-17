@@ -99,6 +99,12 @@ Set `provision_company_schemas=false` for an identity-only run when the supplied
 catalog is not available. The schema task exits successfully without executing
 any catalog statements.
 
+Set `reconcile_company_groups` to a comma-separated list of company names only
+when deliberately moving those teams between workspaces. For each named company,
+the job removes group members not present for that company in the CSV and removes
+the company group's assignment from every other workspace before provisioning
+the selected workspace. The default is empty, so ordinary runs remain additive.
+
 ### Per-company schemas
 
 After users are provisioned, the `create_company_schemas` task (which depends

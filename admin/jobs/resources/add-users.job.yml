@@ -17,6 +17,8 @@ resources:
           default: "true"
         - name: provision_company_schemas
           default: "true"
+        - name: reconcile_company_groups
+          default: ""
       tasks:
         - task_key: add_hackathon_users
           notebook_task:
@@ -31,6 +33,7 @@ resources:
               run_live: "{{job.parameters.run_live}}"
               grant_databricks_sql_access: "{{job.parameters.grant_databricks_sql_access}}"
               provision_git_folders: "{{job.parameters.provision_git_folders}}"
+              reconcile_company_groups: "{{job.parameters.reconcile_company_groups}}"
         - task_key: configure_pat_access
           depends_on:
             - task_key: add_hackathon_users

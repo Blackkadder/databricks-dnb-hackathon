@@ -4,6 +4,7 @@
 
 # COMMAND ----------
 
+import json
 import time
 
 from databricks.sdk import AccountClient, WorkspaceClient
@@ -26,6 +27,7 @@ dbutils.widgets.dropdown(
     "grant_databricks_sql_access", "true", ["false", "true"]
 )
 dbutils.widgets.dropdown("provision_git_folders", "true", ["false", "true"])
+dbutils.widgets.text("reconcile_company_groups", "")
 
 account_host = dbutils.widgets.get("account_host").strip()
 secret_scope = dbutils.widgets.get("secret_scope").strip()
@@ -42,6 +44,11 @@ grant_databricks_sql_access = (
 provision_git_folders = (
     dbutils.widgets.get("provision_git_folders").strip().lower() == "true"
 )
+reconcile_company_groups = {
+    value.strip().casefold()
+    for value in dbutils.widgets.get("reconcile_company_groups").split(",")
+    if value.strip()
+}
 
 if not all(
     [
@@ -214,6 +221,114 @@ workspace_assignments = {
     if assignment.principal and assignment.principal.principal_id is not None
 }
 
+# Opt-in exact reconciliation is intended for moving a company between
+# workspaces without carrying stale members or cross-workspace group access.
+# Only explicitly named companies are affected; normal provisioning remains
+# additive and backward-compatible.
+companies_by_key = {row["company"].casefold(): row["company"] for row in rows}
+unknown_reconcile_groups = reconcile_company_groups - companies_by_key.keys()
+if unknown_reconcile_groups:
+    raise ValueError(
+        "reconcile_company_groups must name companies selected for this workspace: "
+        + ", ".join(sorted(unknown_reconcile_groups))
+    )
+
+if reconcile_company_groups:
+    reconciliation_actions: list[dict[str, str]] = []
+    user_names_by_id = {
+        str(user.id): user.user_name
+        for user in users_by_name.values()
+        if user.id and user.user_name
+    }
+    account_workspaces = list(account_client.workspaces.list())
+
+    for company_key in sorted(reconcile_company_groups):
+        company = companies_by_key[company_key]
+        group = groups_by_name.get(company_key)
+        print(f"\nReconciling company group {company!r}")
+        if group is None or not group.id:
+            print("  account group: not yet created; no stale state to remove")
+            continue
+
+        expected_emails = {
+            row["email_address"].casefold()
+            for row in all_rows
+            if row["company"].casefold() == company_key
+        }
+        expected_member_ids = {
+            str(user.id)
+            for email, user in users_by_name.items()
+            if email in expected_emails and user.id
+        }
+        current_group = account_client.groups.get(group.id)
+        current_member_ids = {
+            str(member.value)
+            for member in (current_group.members or [])
+            if member.value
+        }
+        stale_member_ids = sorted(current_member_ids - expected_member_ids)
+        for member_id in stale_member_ids:
+            member_name = user_names_by_id.get(member_id, member_id)
+            print(f"  stale group member: remove {member_name}")
+            reconciliation_actions.append(
+                {
+                    "action": "remove_group_member",
+                    "company": company,
+                    "principal": member_name,
+                }
+            )
+            if run_live:
+                account_client.groups.patch(
+                    group.id,
+                    operations=[
+                        iam.Patch(
+                            op=iam.PatchOp.REMOVE,
+                            path=f'members[value eq "{member_id}"]',
+                        )
+                    ],
+                    schemas=[
+                        iam.PatchSchema.URN_IETF_PARAMS_SCIM_API_MESSAGES_2_0_PATCH_OP
+                    ],
+                )
+        if not stale_member_ids:
+            print("  stale group members: none")
+
+        for account_workspace in account_workspaces:
+            other_workspace_id = account_workspace.workspace_id
+            if not other_workspace_id or other_workspace_id == workspace_id:
+                continue
+            group_assignment = next(
+                (
+                    assignment
+                    for assignment in account_client.workspace_assignment.list(
+                        other_workspace_id
+                    )
+                    if assignment.principal
+                    and str(assignment.principal.principal_id) == str(group.id)
+                    and WORKSPACE_ACCESS_PERMISSIONS.intersection(
+                        set(assignment.permissions or [])
+                    )
+                ),
+                None,
+            )
+            if group_assignment is None:
+                continue
+            print(
+                "  stale workspace assignment: remove group from "
+                f"workspace {other_workspace_id}"
+            )
+            reconciliation_actions.append(
+                {
+                    "action": "remove_workspace_assignment",
+                    "company": company,
+                    "workspace_id": str(other_workspace_id),
+                }
+            )
+            if run_live:
+                account_client.workspace_assignment.delete(
+                    other_workspace_id, int(group.id)
+                )
+
 mode = "LIVE" if run_live else "DRY RUN"
 desired_entitlements = [WORKSPACE_ACCESS_ENTITLEMENT]
 if grant_databricks_sql_access:
@@ -369,3 +484,14 @@ print(
     if run_live
     else "\nDry run complete. No changes were made."
 )
+if reconcile_company_groups:
+    dbutils.notebook.exit(
+        json.dumps(
+            {
+                "mode": mode,
+                "reconciliation_actions": reconciliation_actions,
+                "selected_users": [row["email_address"] for row in rows],
+            },
+            sort_keys=True,
+        )
+    )
